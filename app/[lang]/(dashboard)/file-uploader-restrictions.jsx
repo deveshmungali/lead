@@ -7,9 +7,11 @@ import { Button } from "@/components/ui/button";
 import { Upload } from "lucide-react";
 
 const FileUploaderRestrictions = () => {
-  const [files, setFiles] = useState([]);
+  const [files, setFiles] = useState([]); // State for files selected for upload
   const [isUploading, setIsUploading] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState([]); // State to store uploaded files
+  const [selectedFiles, setSelectedFiles] = useState([]); // State to track selected files for bulk delete
+  const [isSelectAll, setIsSelectAll] = useState(false); // State to track Select All checkbox
   const { toast } = useToast();
 
   useEffect(() => {
@@ -17,14 +19,14 @@ const FileUploaderRestrictions = () => {
     const fetchUploadedFiles = async () => {
       const response = await fetch("/api/upload-lead");
       const data = await response.json();
-      setUploadedFiles(data); // Make sure the data includes file name, path, and status
+      setUploadedFiles(data); // Ensure data includes file name, path, and status
     };
 
     fetchUploadedFiles();
   }, []);
 
   const { getRootProps, getInputProps } = useDropzone({
-    maxFiles: 2,
+    maxFiles: 5,
     maxSize: 2 * 1024 * 1024, // 2MB in bytes
     accept: {
       "application/vnd.ms-excel": [".xls"],
@@ -109,6 +111,40 @@ const FileUploaderRestrictions = () => {
     }
   };
 
+  // Function to remove a file from the selected list (before uploading)
+  const handleRemoveFile = (fileName) => {
+    setFiles((prevFiles) => prevFiles.filter((file) => file.name !== fileName));
+  };
+
+  const handleDeleteFile = async (fileName) => {
+    try {
+      const response = await fetch(`/api/delete-file?fileName=${fileName}`, {
+        method: "DELETE",
+      });
+
+      if (response.ok) {
+        setUploadedFiles((prevFiles) => prevFiles.filter((file) => file.file_name !== fileName));
+        toast({
+          color: "success",
+          title: "Success",
+          description: `File ${fileName} deleted successfully!`,
+        });
+      } else {
+        toast({
+          color: "destructive",
+          title: "Error",
+          description: `Failed to delete file: ${fileName}`,
+        });
+      }
+    } catch (error) {
+      toast({
+        color: "destructive",
+        title: "Error",
+        description: `Error occurred during file deletion: ${error.message}`,
+      });
+    }
+  };
+
   const handleImportUrls = async (fileName) => {
     try {
       const response = await fetch(`/api/insert-urls?fileName=${fileName}`, {
@@ -144,6 +180,70 @@ const FileUploaderRestrictions = () => {
     }
   };
 
+  // Handle selecting/deselecting a single file
+  const handleSelectFile = (fileName) => {
+    setSelectedFiles((prevSelected) =>
+      prevSelected.includes(fileName)
+        ? prevSelected.filter((name) => name !== fileName)
+        : [...prevSelected, fileName]
+    );
+  };
+
+  // Handle selecting/deselecting all files
+  const handleSelectAll = () => {
+    if (isSelectAll) {
+      setSelectedFiles([]); // Deselect all files
+    } else {
+      const allFileNames = uploadedFiles.map((file) => file.file_name);
+      setSelectedFiles(allFileNames); // Select all files
+    }
+    setIsSelectAll(!isSelectAll); // Toggle select all
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedFiles.length === 0) {
+      toast({
+        color: "destructive",
+        title: "Error",
+        description: "Please select files to delete.",
+      });
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/delete-file`, {
+        method: "DELETE", // Change to DELETE method
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ files: selectedFiles }), // Sending the files array in the body
+      });
+
+      if (response.ok) {
+        setUploadedFiles((prevFiles) =>
+          prevFiles.filter((file) => !selectedFiles.includes(file.file_name))
+        );
+        setSelectedFiles([]); // Clear selected files after deletion
+        setIsSelectAll(false); // Reset select all state
+        toast({
+          color: "success",
+          title: "Success",
+          description: "Files deleted successfully!",
+        });
+      } else {
+        toast({
+          color: "destructive",
+          title: "Error",
+          description: "Failed to delete files.",
+        });
+      }
+    } catch (error) {
+      toast({
+        color: "destructive",
+        title: "Error",
+        description: `Error occurred during bulk deletion: ${error.message}`,
+      });
+    }
+  };
+
   return (
     <Fragment>
       <div {...getRootProps({ className: "dropzone" })}>
@@ -172,7 +272,14 @@ const FileUploaderRestrictions = () => {
                     </div>
                   </div>
                 </div>
-                <Button size="icon" color="destructive" variant="outline" className="border-none rounded-full">
+                {/* Add file removal button */}
+                <Button
+                  size="icon"
+                  color="destructive"
+                  variant="outline"
+                  className="border-none rounded-full"
+                  onClick={() => handleRemoveFile(file.name)} // Call remove file handler
+                >
                   <Icon icon="tabler:x" className="h-5 w-5" />
                 </Button>
               </div>
@@ -192,27 +299,58 @@ const FileUploaderRestrictions = () => {
       <div className="mt-8">
         <h3 className="text-xl font-semibold mb-4">Uploaded Files</h3>
         {uploadedFiles.length > 0 ? (
-          <ul className="space-y-3">
-            {uploadedFiles.map((file) => (
-              <li key={file.file_name} className="flex items-center justify-between p-4 border rounded-md">
-                <div className="flex items-center space-x-4">
-                  <Icon icon="tabler:file-spreadsheet" className="h-6 w-6 text-default-600" />
-                  <span className="text-sm font-medium">{file.file_name}</span>
-                </div>
-                <div className="flex items-center space-x-4">
-                  <a href={file.file_path} download className="text-blue-600 hover:underline">
-                    Download
-                  </a>
-                  <Button
-                    onClick={() => handleImportUrls(file.file_name)}
-                    disabled={file.status === "imported"}
-                  >
-                    {file.status === "imported" ? "Imported" : "Click"}
-                  </Button>
-                </div>
-              </li>
-            ))}
-          </ul>
+          <Fragment>
+            {/* Select All Checkbox */}
+            <div className="flex items-center">
+              <input
+                type="checkbox"
+                checked={isSelectAll}
+                onChange={handleSelectAll}
+              />
+              <span className="ml-2">Select All</span>
+            </div>
+
+            <ul className="space-y-3 mt-4">
+              {uploadedFiles.map((file) => (
+                <li key={file.file_name} className="flex items-center justify-between p-4 border rounded-md">
+                  <div className="flex items-center space-x-4">
+                    <input
+                      type="checkbox"
+                      checked={selectedFiles.includes(file.file_name)}
+                      onChange={() => handleSelectFile(file.file_name)}
+                    />
+                    <Icon icon="tabler:file-spreadsheet" className="h-6 w-6 text-default-600" />
+                    <span className="text-sm font-medium">{file.file_name}</span>
+                  </div>
+                  <div className="flex items-center space-x-4">
+                    <a href={file.file_path} download className="text-blue-600 hover:underline">
+                      Download
+                    </a>
+                    <Button
+                      onClick={() => handleImportUrls(file.file_name)}
+                      disabled={file.status === "imported"}
+                    >
+                      {file.status === "imported" ? "Imported" : "Import URLs"}
+                    </Button>
+                    <Button
+                      color="destructive"
+                      onClick={() => handleDeleteFile(file.file_name)}
+                    >
+                      Delete
+                    </Button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+
+            {selectedFiles.length > 0 && (
+              <div className="flex justify-end mt-4">
+                <Button color="destructive" onClick={handleBulkDelete}>
+                  Delete Selected Files
+                </Button>
+              </div>
+            )}
+          </Fragment>
         ) : (
           <p className="text-sm text-muted-foreground">No files uploaded yet.</p>
         )}

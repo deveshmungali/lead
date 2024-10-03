@@ -14,11 +14,15 @@ import {
 } from "@/components/ui/select";
 import Link from "next/link";
 import { useState, useEffect } from "react";
+import * as XLSX from "xlsx";
 
 export function DataTableToolbar({ table }) {
   const isFiltered = table.getState().columnFilters.length > 0;
   const [searchTerm, setSearchTerm] = useState("");
   const [rowsPerPage, setRowsPerPage] = useState(10);
+  
+  // Selection state
+  const selectedRows = table.getSelectedRowModel().rows;
 
   // Debounced search input
   useEffect(() => {
@@ -27,6 +31,23 @@ export function DataTableToolbar({ table }) {
     }, 300);
     return () => clearTimeout(timeoutId);
   }, [searchTerm, table]);
+
+  // Export data to Excel
+  const exportToExcel = (selectedRows) => {
+    const dataToExport = selectedRows.map((row) => row.original); // Extract row data
+    const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Selected Data");
+    XLSX.writeFile(workbook, "exported_data.xlsx");
+  };
+
+  const handleExport = () => {
+    if (selectedRows.length > 0) {
+      exportToExcel(selectedRows);
+    } else {
+      alert("Please select rows to export.");
+    }
+  };
 
   return (
     <div className="flex flex-col md:flex-row gap-4">
@@ -90,6 +111,13 @@ export function DataTableToolbar({ table }) {
           </Button>
         )}
 
+        {/* Export to Excel Button */}
+        <Button onClick={handleExport} variant="default">
+          <Icon icon="icon-park-outline:export" className="w-5 h-5 ltr:mr-2" />
+          Export to Excel
+        </Button>
+
+        {/* Create Lead Button */}
         <Button asChild>
           <Link href="/create-lead">
             <Plus className="w-5 h-5 ltr:mr-2 rtl:ml-2" />

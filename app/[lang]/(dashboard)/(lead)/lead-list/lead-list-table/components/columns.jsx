@@ -1,12 +1,33 @@
 "use client";
 
+import React, { useState } from "react";
 import { DataTableColumnHeader } from "./data-table-column-header";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@iconify/react";
 import Link from "next/link";
+import * as XLSX from "xlsx";
 
+// Define the columns for your table
 export const columns = [
+  {
+    id: "select",
+    header: ({ table }) => (
+      <input
+        type="checkbox"
+        // Handle select all
+        checked={table.getIsAllRowsSelected()}
+        onChange={() => table.toggleAllRowsSelected(!table.getIsAllRowsSelected())}
+      />
+    ),
+    cell: ({ row }) => (
+      <input
+        type="checkbox"
+        checked={row.getIsSelected()}
+        onChange={() => row.toggleSelected()}
+      />
+    ),
+  },
   {
     accessorKey: "first_name",
     header: ({ column }) => (
@@ -91,3 +112,89 @@ export const columns = [
     ),
   },
 ];
+
+// Function to export data to Excel
+const exportToExcel = (selectedRows) => {
+  const worksheet = XLSX.utils.json_to_sheet(selectedRows);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Selected Data");
+  XLSX.writeFile(workbook, "exported_data.xlsx");
+};
+
+// Main component
+const DataTableWithExport = ({ data }) => {
+  const [selectedRows, setSelectedRows] = useState([]);
+
+  // Handle row selection
+  const handleSelectRow = (row) => {
+    if (selectedRows.includes(row)) {
+      setSelectedRows(selectedRows.filter((r) => r !== row));
+    } else {
+      setSelectedRows([...selectedRows, row]);
+    }
+  };
+
+  // Handle select all
+  const handleSelectAll = () => {
+    if (selectedRows.length === data.length) {
+      setSelectedRows([]);
+    } else {
+      setSelectedRows(data);
+    }
+  };
+
+  const handleExport = () => {
+    if (selectedRows.length > 0) {
+      exportToExcel(selectedRows);
+    } else {
+      alert("Please select rows to export.");
+    }
+  };
+
+  return (
+    <div>
+      <div className="flex justify-between mb-4">
+        <Button onClick={handleExport}>Export to Excel</Button>
+        <input
+          type="checkbox"
+          onChange={handleSelectAll}
+          checked={selectedRows.length === data.length}
+        />
+        <span>Select All</span>
+      </div>
+      <table className="min-w-full bg-white">
+        <thead>
+          <tr>
+            {/* Render column headers */}
+            {columns.map((column) => (
+              <th key={column.accessorKey || column.id}>{column.header({ column })}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {/* Render rows */}
+          {data.map((row, idx) => (
+            <tr key={idx}>
+              {columns.map((column) => (
+                <td key={column.accessorKey || column.id}>
+                  {column.accessorKey
+                    ? row[column.accessorKey]
+                    : column.cell({ row })}
+                </td>
+              ))}
+              <td>
+                <input
+                  type="checkbox"
+                  checked={selectedRows.includes(row)}
+                  onChange={() => handleSelectRow(row)}
+                />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+};
+
+export default DataTableWithExport;
